@@ -1,10 +1,10 @@
-use mermaid_rs_renderer::{RenderOptions, Theme, render_with_options};
+use mermaid_rs_renderer::{LayoutConfig, RenderOptions, Theme, render_with_options};
 use serde_json::Value;
 
 fn dark_theme() -> Theme {
     Theme {
         font_family: "Inter, ui-sans-serif, system-ui, sans-serif".into(),
-        font_size: 14.0,
+        font_size: 16.0,
         primary_color: "#394b70".into(),
         primary_text_color: "#c0caf5".into(),
         primary_border_color: "#565f89".into(),
@@ -27,48 +27,80 @@ fn dark_theme() -> Theme {
     }
 }
 
-/// Add vertical padding to the SVG viewBox and height to work around
-/// mmdr clipping the bottom of sequence diagrams.
-fn pad_svg(svg: &str, padding: f32) -> String {
-    fn patch_attr(s: &str, attr: &str, delta: f32) -> String {
-        let needle = format!("{attr}=\"");
-        let Some(pos) = s.find(&needle) else {
-            return s.to_string();
-        };
-        let start = pos + needle.len();
-        let end = start + s[start..].find('"').unwrap();
-        let val = &s[start..end];
+fn extract_attr<'a>(svg: &'a str, attr: &str) -> Option<&'a str> {
+    let needle = format!("{attr}=\"");
+    let start = svg.find(&needle)? + needle.len();
+    let end = start + svg[start..].find('"')?;
+    Some(&svg[start..end])
+}
 
-        // viewBox has 4 components — patch the last one
-        if val.contains(' ') {
-            let parts: Vec<&str> = val.split_whitespace().collect();
-            if parts.len() == 4 {
-                if let Ok(h) = parts[3].parse::<f32>() {
-                    let patched = format!("{} {} {} {}", parts[0], parts[1], parts[2], h + delta);
-                    return format!("{}{patched}{}", &s[..start], &s[end..]);
-                }
-            }
-            return s.to_string();
-        }
+fn replace_attr(svg: &str, attr: &str, new_val: &str) -> String {
+    let needle = format!("{attr}=\"");
+    let Some(pos) = svg.find(&needle) else {
+        return svg.to_string();
+    };
+    let start = pos + needle.len();
+    let end = start + svg[start..].find('"').unwrap();
+    format!("{}{new_val}{}", &svg[..start], &svg[end..])
+}
 
-        // scalar attribute (height)
-        if let Ok(h) = val.parse::<f32>() {
-            return format!("{}{}{}", &s[..start], h + delta, &s[end..]);
-        }
-        s.to_string()
+fn remove_attr(svg: &str, attr: &str) -> String {
+    let needle = format!("{attr}=\"");
+    let Some(pos) = svg.find(&needle) else {
+        return svg.to_string();
+    };
+    let end = pos + needle.len() + svg[pos + needle.len()..].find('"').unwrap() + 1;
+    // also trim trailing space
+    let end = if svg.as_bytes().get(end) == Some(&b' ') {
+        end + 1
+    } else {
+        end
+    };
+    format!("{}{}", &svg[..pos], &svg[end..])
+}
+
+/// Ensure the SVG viewBox has a minimum width/height by adding padding.
+/// Centers the original content within the new viewBox.
+fn ensure_min_viewbox(svg: &str, min_w: f32, pad_bottom: f32) -> String {
+    let Some(vb) = extract_attr(svg, "viewBox") else {
+        return svg.to_string();
+    };
+    let parts: Vec<f32> = vb
+        .split_whitespace()
+        .filter_map(|p| p.parse().ok())
+        .collect();
+    if parts.len() != 4 {
+        return svg.to_string();
     }
+    let (x, y, w, h) = (parts[0], parts[1], parts[2], parts[3]);
 
-    let out = patch_attr(svg, "height", padding);
-    patch_attr(&out, "viewBox", padding)
+    let new_w = w.max(min_w);
+    let new_x = x - (new_w - w) / 2.0;
+    let new_h = h + pad_bottom;
+
+    replace_attr(
+        svg,
+        "viewBox",
+        &format!("{new_x} {y} {new_w} {new_h}"),
+    )
 }
 
 fn render_mermaid(code: &str) -> String {
     let opts = RenderOptions {
         theme: dark_theme(),
-        ..RenderOptions::default()
+        layout: LayoutConfig {
+            node_spacing: 80.0,
+            rank_spacing: 100.0,
+            ..LayoutConfig::default()
+        },
     };
     match render_with_options(code, opts) {
-        Ok(svg) => pad_svg(&svg, 20.0),
+        Ok(svg) => {
+            let svg = ensure_min_viewbox(&svg, 450.0, 20.0);
+            let svg = remove_attr(&svg, "width");
+            let svg = remove_attr(&svg, "height");
+            format!("<div style=\"max-width:700px;margin:1.5em auto\">{svg}</div>")
+        }
         Err(e) => format!("<pre><code>mermaid error: {e}</code></pre>"),
     }
 }
