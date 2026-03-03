@@ -62,7 +62,7 @@ const THEME_CSS: &str = "\
 .ayu .mermaid-light { display: none; }\
 .light .mermaid-dark,\
 .rust .mermaid-dark { display: none; }\
-</style>";
+</style>\n";
 
 fn render_mermaid(code: &str) -> String {
     let light = render_svg(code, light_theme());
