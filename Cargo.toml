@@ -1,0 +1,10 @@
+[package]
+name = "mdbook-mermaid"
+version = "0.1.0"
+edition = "2024"
+description = "mdbook preprocessor that renders mermaid diagrams to inline SVG using mermaid-rs-renderer"
+license = "MIT"
+
+[dependencies]
+mermaid-rs-renderer = { version = "0.2", default-features = false }
+serde_json = "1"
