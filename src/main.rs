@@ -73,17 +73,16 @@ fn render_mermaid(code: &str) -> String {
     )
 }
 
-fn process_content(content: &str, css_injected: &mut bool) -> String {
+fn process_content(content: &str) -> String {
     let mut result = String::with_capacity(content.len());
     let mut rest = content;
-    let mut has_mermaid = false;
+    let mut css_injected = false;
 
     while let Some(start) = rest.find("```mermaid") {
-        if !has_mermaid && !*css_injected {
+        if !css_injected {
             result.push_str(THEME_CSS);
-            *css_injected = true;
+            css_injected = true;
         }
-        has_mermaid = true;
         result.push_str(&rest[..start]);
         let after = &rest[start + "```mermaid".len()..];
         if let Some(end) = after.find("```") {
@@ -99,14 +98,14 @@ fn process_content(content: &str, css_injected: &mut bool) -> String {
     result
 }
 
-fn process_sections(sections: &mut Vec<Value>, css_injected: &mut bool) {
+fn process_sections(sections: &mut Vec<Value>) {
     for section in sections {
         if let Some(chapter) = section.get_mut("Chapter") {
             if let Some(content) = chapter["content"].as_str() {
-                chapter["content"] = Value::String(process_content(content, css_injected));
+                chapter["content"] = Value::String(process_content(content));
             }
             if let Some(subs) = chapter.get_mut("sub_items").and_then(|v| v.as_array_mut()) {
-                process_sections(subs, css_injected);
+                process_sections(subs);
             }
         }
     }
@@ -120,9 +119,8 @@ fn main() {
     let input: Vec<Value> = serde_json::from_reader(std::io::stdin()).unwrap();
     let mut book = input[1].clone();
 
-    let mut css_injected = false;
     if let Some(sections) = book.get_mut("sections").and_then(|v| v.as_array_mut()) {
-        process_sections(sections, &mut css_injected);
+        process_sections(sections);
     }
 
     serde_json::to_writer(std::io::stdout(), &book).unwrap();
