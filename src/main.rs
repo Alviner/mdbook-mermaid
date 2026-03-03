@@ -1,6 +1,15 @@
 use mermaid_rs_renderer::{LayoutConfig, RenderOptions, Theme, render_with_options};
 use serde_json::Value;
 
+fn light_theme() -> Theme {
+    Theme {
+        font_family: "Inter, ui-sans-serif, system-ui, sans-serif".into(),
+        font_size: 16.0,
+        background: "transparent".into(),
+        ..Theme::modern()
+    }
+}
+
 fn dark_theme() -> Theme {
     Theme {
         font_family: "Inter, ui-sans-serif, system-ui, sans-serif".into(),
@@ -27,14 +36,18 @@ fn dark_theme() -> Theme {
     }
 }
 
-fn render_mermaid(code: &str) -> String {
+fn layout() -> LayoutConfig {
+    LayoutConfig {
+        node_spacing: 80.0,
+        rank_spacing: 100.0,
+        ..LayoutConfig::default()
+    }
+}
+
+fn render_svg(code: &str, theme: Theme) -> String {
     let opts = RenderOptions {
-        theme: dark_theme(),
-        layout: LayoutConfig {
-            node_spacing: 80.0,
-            rank_spacing: 100.0,
-            ..LayoutConfig::default()
-        },
+        theme,
+        layout: layout(),
     };
     match render_with_options(code, opts) {
         Ok(svg) => svg,
@@ -42,11 +55,35 @@ fn render_mermaid(code: &str) -> String {
     }
 }
 
-fn process_content(content: &str) -> String {
+const THEME_CSS: &str = "\
+<style>\
+.coal .mermaid-light,\
+.navy .mermaid-light,\
+.ayu .mermaid-light { display: none; }\
+.light .mermaid-dark,\
+.rust .mermaid-dark { display: none; }\
+</style>";
+
+fn render_mermaid(code: &str) -> String {
+    let light = render_svg(code, light_theme());
+    let dark = render_svg(code, dark_theme());
+    format!(
+        "<div class=\"mermaid-light\">{light}</div>\
+         <div class=\"mermaid-dark\">{dark}</div>"
+    )
+}
+
+fn process_content(content: &str, css_injected: &mut bool) -> String {
     let mut result = String::with_capacity(content.len());
     let mut rest = content;
+    let mut has_mermaid = false;
 
     while let Some(start) = rest.find("```mermaid") {
+        if !has_mermaid && !*css_injected {
+            result.push_str(THEME_CSS);
+            *css_injected = true;
+        }
+        has_mermaid = true;
         result.push_str(&rest[..start]);
         let after = &rest[start + "```mermaid".len()..];
         if let Some(end) = after.find("```") {
@@ -62,14 +99,14 @@ fn process_content(content: &str) -> String {
     result
 }
 
-fn process_sections(sections: &mut Vec<Value>) {
+fn process_sections(sections: &mut Vec<Value>, css_injected: &mut bool) {
     for section in sections {
         if let Some(chapter) = section.get_mut("Chapter") {
             if let Some(content) = chapter["content"].as_str() {
-                chapter["content"] = Value::String(process_content(content));
+                chapter["content"] = Value::String(process_content(content, css_injected));
             }
             if let Some(subs) = chapter.get_mut("sub_items").and_then(|v| v.as_array_mut()) {
-                process_sections(subs);
+                process_sections(subs, css_injected);
             }
         }
     }
@@ -83,8 +120,9 @@ fn main() {
     let input: Vec<Value> = serde_json::from_reader(std::io::stdin()).unwrap();
     let mut book = input[1].clone();
 
+    let mut css_injected = false;
     if let Some(sections) = book.get_mut("sections").and_then(|v| v.as_array_mut()) {
-        process_sections(sections);
+        process_sections(sections, &mut css_injected);
     }
 
     serde_json::to_writer(std::io::stdout(), &book).unwrap();
