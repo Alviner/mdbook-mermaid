@@ -27,13 +27,48 @@ fn dark_theme() -> Theme {
     }
 }
 
+/// Add vertical padding to the SVG viewBox and height to work around
+/// mmdr clipping the bottom of sequence diagrams.
+fn pad_svg(svg: &str, padding: f32) -> String {
+    fn patch_attr(s: &str, attr: &str, delta: f32) -> String {
+        let needle = format!("{attr}=\"");
+        let Some(pos) = s.find(&needle) else {
+            return s.to_string();
+        };
+        let start = pos + needle.len();
+        let end = start + s[start..].find('"').unwrap();
+        let val = &s[start..end];
+
+        // viewBox has 4 components — patch the last one
+        if val.contains(' ') {
+            let parts: Vec<&str> = val.split_whitespace().collect();
+            if parts.len() == 4 {
+                if let Ok(h) = parts[3].parse::<f32>() {
+                    let patched = format!("{} {} {} {}", parts[0], parts[1], parts[2], h + delta);
+                    return format!("{}{patched}{}", &s[..start], &s[end..]);
+                }
+            }
+            return s.to_string();
+        }
+
+        // scalar attribute (height)
+        if let Ok(h) = val.parse::<f32>() {
+            return format!("{}{}{}", &s[..start], h + delta, &s[end..]);
+        }
+        s.to_string()
+    }
+
+    let out = patch_attr(svg, "height", padding);
+    patch_attr(&out, "viewBox", padding)
+}
+
 fn render_mermaid(code: &str) -> String {
     let opts = RenderOptions {
         theme: dark_theme(),
         ..RenderOptions::default()
     };
     match render_with_options(code, opts) {
-        Ok(svg) => svg,
+        Ok(svg) => pad_svg(&svg, 20.0),
         Err(e) => format!("<pre><code>mermaid error: {e}</code></pre>"),
     }
 }
