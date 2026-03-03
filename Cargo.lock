@@ -125,7 +125,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "mdbook-mermaid"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mermaid-rs-renderer",
  "serde_json",
@@ -149,8 +149,7 @@ dependencies = [
 [[package]]
 name = "mermaid-rs-renderer"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71ad12b5fe081f780b73864e81afac55282139121b8acf3afe353a93428842d7"
+source = "git+https://github.com/zed-industries/mermaid-rs-renderer?rev=374db9ead5426697c6c2111151d9f246899bc638#374db9ead5426697c6c2111151d9f246899bc638"
 dependencies = [
  "anyhow",
  "fontdb",
